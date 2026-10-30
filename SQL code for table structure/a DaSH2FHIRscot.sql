@@ -12,40 +12,80 @@
 --imported "DaSH538_Haematology_Release"
 
 -- add category based on the flat file name
-ALTER TABLE DaSH538_Biochemistry_Release
-ADD category VARCHAR(150) NOT NULL
-DEFAULT 'biochemistry'; -- edit default value based on the flat file name which indicate the category of the data
+--ALTER TABLE DaSH538_Biochemistry_Release
+--ADD category VARCHAR(150) NOT NULL
+--DEFAULT 'biochemistry'; -- edit default value based on the flat file name which indicate the category of the data
 -- for multiple flat files, import each file for one table, conduct the above step  seperatly 
 -- add category based on the flat file name
-ALTER TABLE DaSH538_Haematology_Release
-ADD category VARCHAR(150) NOT NULL
-DEFAULT 'haematology'; -- edit default value based on the flat file name which indicate the category of the data
+--ALTER TABLE DaSH538_Haematology_Release
+--ADD category VARCHAR(150) NOT NULL
+--DEFAULT 'haematology'; -- edit default value based on the flat file name which indicate the category of the data
 -- merge all table into DaSH
-SELECT * INTO DaSH FROM (
-  SELECT * 
-  FROM DaSH538_Biochemistry_Release
-  UNION All
-  SELECT * 
-  FROM DaSH538_Haematology_Release
-  ) as tmp
+--SELECT * INTO DaSH FROM (
+--  SELECT * 
+--  FROM DaSH538_Biochemistry_Release
+--  UNION All
+--  SELECT * 
+--  FROM DaSH538_Haematology_Release
+--  ) as tmp
 
 ------------------------------------------------------------------------------------------------------------------
 --example data should only run the following lines of code -------------------------------------------------------
 ------------------------------------------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION charindex(target_sub text, source_str text)
+RETURNS integer AS $$
+    SELECT strpos(source_str, target_sub);
+$$ LANGUAGE sql IMMUTABLE RETURNS NULL ON NULL INPUT;
+
+CREATE OR REPLACE FUNCTION len(source_str text)
+RETURNS integer AS $$
+    SELECT char_length(rtrim(source_str));
+$$ LANGUAGE sql IMMUTABLE RETURNS NULL ON NULL INPUT;
+
+CREATE OR REPLACE FUNCTION isnumeric(source_str text)
+RETURNS integer AS $$
+BEGIN
+    -- Match SQL Server behavior: returns 1 if valid, 0 if not
+    IF source_str ~ '^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$'
+       OR source_str ~ '^[$-]?[0-9,]+(\.[0-9]+)?$' THEN
+        RETURN 1;
+    ELSE
+        RETURN 0;
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION isnumeric_strict(source_str text) /* this is the strict version, you can use this by renaming it */
+RETURNS integer AS $$
+DECLARE
+    dummy numeric;
+BEGIN
+    dummy := source_str::numeric;
+    RETURN 1;
+EXCEPTION WHEN others THEN
+    RETURN 0;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+
 
 select *, 
 substring(Reference_Range, 1, case when  CHARINDEX('{', Reference_Range) = 0 then LEN(Reference_Range) 
 else CHARINDEX('{', Reference_Range)-1 end) as "low",
 substring(Reference_Range, case when  CHARINDEX('{', Reference_Range) = 0 then LEN(Reference_Range) 
 else CHARINDEX('{', Reference_Range)+1 end, LEN(Reference_Range) ) as "high"
-into DaSH_v2
-from dbo.DaSH;
+into "DaSH_v2"
+from "DaSH";
+
+alter table "DaSH_v2" alter column high type real using high::real;
+alter table "DaSH_v2" alter column low  type real using low::real;
 
 
-CREATE TABLE dbo.FHIR_DaSH (
+CREATE TABLE "FHIR_DaSH" (
 subject         VARCHAR(50) NOT NULL,
 category          VARCHAR(150) NULL,
-code              VARCHAR(50) collate Latin1_General_BIN NOT NULL,
+code              VARCHAR(50) collate "C" NOT NULL,
 effectiveDate     DATE NULL,
 valueQuantity     VARCHAR(50) NULL,
 valueUnit         VARCHAR(50) NULL,
@@ -58,7 +98,7 @@ healthBoard       VARCHAR(50) NULL,
 readCodeDescription  VARCHAR(250) NULL
 );
 
-INSERT INTO FHIR_DaSH
+INSERT INTO "FHIR_DaSH"
 (
     subject,
     category,
@@ -114,5 +154,5 @@ SELECT
 
     test_description AS readCodeDescription
 
-FROM DaSH_v2
+FROM "DaSH_v2"
 WHERE read_code IS NOT NULL;
